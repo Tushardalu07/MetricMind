@@ -1,0 +1,21 @@
+select
+    order_id,
+    order_date,
+    year,
+    quarter,
+    month,
+    region,
+    country,
+    product,
+    channel,
+    units_sold,
+    unit_price,
+    revenue,
+    material_cost,
+    shipping_cost,
+    labor_cost,
+    marketing_cost,
+    total_cost,
+    profit,
+    margin_percent
+from {{ source('raw', 'raw_sales') }}
