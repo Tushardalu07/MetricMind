@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: sales_summary
+    description: >
+      Aggregated sales summary containing sales performance metrics
+      across year, quarter, region, country, product, and channel.
+
+    columns:
+      - name: year
+        description: "Year of the sales transaction."
+
+      - name: quarter
+        description: "Quarter in which the sales transaction occurred."
+
+      - name: region
+        description: "Geographical region associated with the sale."
+
+      - name: country
+        description: "Country associated with the sale."
+
+      - name: product
+        description: "Product associated with the sale."
+
+      - name: channel
+        description: "Sales channel through which the transaction occurred."
+
+      - name: total_units_sold
+        description: "Total number of units sold."
+
+      - name: total_revenue
+        description: "Total revenue generated from sales."
+
+      - name: total_cost
+        description: "Total cost associated with the sales."
+
+      - name: total_profit
+        description: "Total profit generated from sales."
+
+      - name: avg_margin_percent
+        description: "Average profit margin percentage."
