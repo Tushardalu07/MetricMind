@@ -59,3 +59,21 @@ def get_product_summary(product: str):
         "total_revenue": round(filtered_data["Revenue"].sum(), 2),
         "total_profit": round(filtered_data["Profit"].sum(), 2)
     }
+
+@app.get("/summary/channel/{channel}")
+def get_channel_summary(channel: str):
+    filtered_data = data[data["Channel"].str.lower() == channel.lower()]
+
+    if filtered_data.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Channel '{channel}' not found"
+        )
+
+    return {
+        "channel": channel,
+        "total_orders": len(filtered_data),
+        "total_units_sold": int(filtered_data["Units_Sold"].sum()),
+        "total_revenue": round(filtered_data["Revenue"].sum(), 2),
+        "total_profit": round(filtered_data["Profit"].sum(), 2)
+    }
