@@ -1,5 +1,6 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+
 import pandas as pd
 
 app = FastAPI()
@@ -35,6 +36,24 @@ def get_region_summary(region: str):
 
     return {
         "region": region,
+        "total_orders": len(filtered_data),
+        "total_units_sold": int(filtered_data["Units_Sold"].sum()),
+        "total_revenue": round(filtered_data["Revenue"].sum(), 2),
+        "total_profit": round(filtered_data["Profit"].sum(), 2)
+    }
+
+@app.get("/summary/product/{product}")
+def get_product_summary(product: str):
+    filtered_data = data[data["Product"].str.lower() == product.lower()]
+
+    if filtered_data.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Product '{product}' not found"
+        )
+
+    return {
+        "product": product,
         "total_orders": len(filtered_data),
         "total_units_sold": int(filtered_data["Units_Sold"].sum()),
         "total_revenue": round(filtered_data["Revenue"].sum(), 2),
