@@ -95,3 +95,33 @@ def get_year_summary(year: int):
         "total_revenue": round(filtered_data["Revenue"].sum(), 2),
         "total_profit": round(filtered_data["Profit"].sum(), 2)
     }
+
+@app.get("/summary/month/{month}")
+def get_month_summary(month: int):
+    filtered_data = data[data["Month"] == month]
+
+    if filtered_data.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Month '{month}' not found"
+        )
+
+    return {
+        "month": month,
+        "total_orders": len(filtered_data),
+        "total_units_sold": int(filtered_data["Units_Sold"].sum()),
+        "total_revenue": round(filtered_data["Revenue"].sum(), 2),
+        "total_profit": round(filtered_data["Profit"].sum(), 2)
+    }
+
+@app.get("/summary/cost-profit")
+def get_cost_profit_summary():
+    return {
+        "total_material_cost": round(data["Material_Cost"].sum(), 2),
+        "total_shipping_cost": round(data["Shipping_Cost"].sum(), 2),
+        "total_labor_cost": round(data["Labor_Cost"].sum(), 2),
+        "total_marketing_cost": round(data["Marketing_Cost"].sum(), 2),
+        "total_cost": round(data["Total_Cost"].sum(), 2),
+        "total_profit": round(data["Profit"].sum(), 2),
+        "average_margin_percent": round(data["Margin_Percent"].mean(), 2)
+    }
