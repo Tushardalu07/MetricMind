@@ -77,3 +77,21 @@ def get_channel_summary(channel: str):
         "total_revenue": round(filtered_data["Revenue"].sum(), 2),
         "total_profit": round(filtered_data["Profit"].sum(), 2)
     }
+
+@app.get("/summary/year/{year}")
+def get_year_summary(year: int):
+    filtered_data = data[data["Year"] == year]
+
+    if filtered_data.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Year '{year}' not found"
+        )
+
+    return {
+        "year": year,
+        "total_orders": len(filtered_data),
+        "total_units_sold": int(filtered_data["Units_Sold"].sum()),
+        "total_revenue": round(filtered_data["Revenue"].sum(), 2),
+        "total_profit": round(filtered_data["Profit"].sum(), 2)
+    }
