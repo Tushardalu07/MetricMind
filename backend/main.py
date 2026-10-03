@@ -5,7 +5,10 @@ import pandas as pd
 
 app = FastAPI()
 
-data = pd.read_csv("data/MetricMind_Corporate_Sales_Dataset.csv")
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+data = pd.read_csv(BASE_DIR / "data" / "MetricMind_Corporate_Sales_Dataset.csv")
 
 @app.get("/")
 def home():
@@ -13,8 +16,7 @@ def home():
 
 @app.get("/sales")
 def get_sales():
-    return
-data.to_dict(orient="records")
+    return data.to_dict(orient="records")
 
 @app.get("/summary")
 def get_summary():
