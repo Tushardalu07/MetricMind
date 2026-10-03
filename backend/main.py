@@ -125,3 +125,23 @@ def get_cost_profit_summary():
         "total_profit": round(data["Profit"].sum(), 2),
         "average_margin_percent": round(data["Margin_Percent"].mean(), 2)
     }
+
+@app.get("/summary/quarter/{quarter}")
+def get_quarter_summary(quarter: str):
+    filtered_data = data[
+        data["Quarter"].str.upper() == quarter.upper()
+    ]
+
+    if filtered_data.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Quarter '{quarter}' not found"
+        )
+
+    return {
+        "quarter": quarter.upper(),
+        "total_orders": len(filtered_data),
+        "total_units_sold": int(filtered_data["Units_Sold"].sum()),
+        "total_revenue": round(filtered_data["Revenue"].sum(), 2),
+        "total_profit": round(filtered_data["Profit"].sum(), 2)
+    }

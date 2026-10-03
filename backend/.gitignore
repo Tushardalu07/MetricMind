@@ -1,0 +1,15 @@
+# Python
+_pycache_/
+*.pyc
+.venv/
+
+# Local databases
+*.db
+*.duckdb
+
+# dbt generated files
+target/
+logs/
+dbt_packages/
+
+../metricmind_dbt/metricmind.duckdb
