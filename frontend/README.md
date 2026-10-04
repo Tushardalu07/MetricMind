@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MetricMind Frontend
 
-## Getting Started
+MetricMind is an AI-powered business analytics platform that allows users to ask business questions in natural language and view the results through an interactive chat interface.
 
-First, run the development server:
+This repository contains the **Next.js frontend** of the MetricMind project.
 
-```bash
+## Features
+
+- 💬 Natural-language chat interface
+- 📊 Dynamic bar and line charts using ECharts
+- 🔍 View API Call
+- 🧾 View SQL query
+- ⏳ Loading and response states
+- 📱 Responsive UI for desktop and mobile
+- 🎨 Clean and professional analytics dashboard design
+
+## Tech Stack
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- ECharts
+- echarts-for-react
+- Lucide React
+
+## Project Structure
+
+```text
+frontend/
+├── app/
+│   ├── components/
+│   │   └── charts/
+│   │       └── DynamicChart.tsx
+│   ├── globals.css
+│   ├── layout.tsx
+│   └── page.tsx
+├── public/
+├── package.json
+└── README.md
+
+Getting Started
+Clone the repository:
+git clone https://github.com/Tushardalu07/MetricMind.git
+
+Go to the frontend folder:
+cd MetricMind/frontend
+
+Install dependencies:
+npm install
+
+Run the development server:
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
+http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Frontend Architecture
+User
+  ↓
+Next.js Frontend
+  ↓
+FastAPI Backend
+  ↓
+MetricMind Analytics
+  ↓
+Response + Chart
+  ↓
+Next.js UI
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Current Status
+- [✔] Next.js UI
+- [✔] Chat interface
+- [✔] Responsive design
+- [✔] ECharts integration
+- [✔] Bar charts
+- [✔] Line charts
+- [✔] View API Call
+- [✔] View SQL
+- [ ] FastAPI integration
