@@ -4,4 +4,8 @@ metricmind_dbt/dbt_packages/
 *.pyc
 __pycache__/
 .env
+.env.*
+!.env.example
 .venv/
+node_modules/
+.cubestore/
