@@ -254,8 +254,9 @@ def get_dbt_sales_summary():
             conn.close()
 
 # --------------------------------------------------
-# summary/cost-profit
+# Quarter summary
 # --------------------------------------------------
+
 @app.get("/summary/quarter/{quarter}")
 def get_quarter_summary(quarter: str):
     filtered_data = data[
@@ -274,24 +275,4 @@ def get_quarter_summary(quarter: str):
         "total_units_sold": int(filtered_data["Units_Sold"].sum()),
         "total_revenue": round(float(filtered_data["Revenue"].sum()), 2),
         "total_profit": round(float(filtered_data["Profit"].sum()), 2),
-    }
-
-@app.get("/summary/quarter/{quarter}")
-def get_quarter_summary(quarter: str):
-    filtered_data = data[
-        data["Quarter"].str.upper() == quarter.upper()
-    ]
-
-    if filtered_data.empty:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Quarter '{quarter}' not found"
-        )
-
-    return {
-        "quarter": quarter.upper(),
-        "total_orders": len(filtered_data),
-        "total_units_sold": int(filtered_data["Units_Sold"].sum()),
-        "total_revenue": round(filtered_data["Revenue"].sum(), 2),
-        "total_profit": round(filtered_data["Profit"].sum(), 2)
     }
