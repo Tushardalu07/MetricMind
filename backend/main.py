@@ -1,9 +1,20 @@
 
 from fastapi import FastAPI, HTTPException
-
+from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 data = pd.read_csv("data/MetricMind_Corporate_Sales_Dataset.csv")
 
@@ -13,8 +24,7 @@ def home():
 
 @app.get("/sales")
 def get_sales():
-    return
-data.to_dict(orient="records")
+    return data.to_dict(orient="records")
 
 @app.get("/summary")
 def get_summary():
