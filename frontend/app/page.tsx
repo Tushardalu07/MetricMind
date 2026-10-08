@@ -72,36 +72,38 @@ const suggestions = [
 ];
 
 /* =========================================================
+   HELPER
+========================================================= */
+
+const formatCurrency = (value: number) => {
+  return `₹${Number(value).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+/* =========================================================
    HOME
 ========================================================= */
 
 export default function Home() {
   const [input, setInput] = useState("");
-
   const [messages, setMessages] = useState<Message[]>([]);
-
   const [isLoading, setIsLoading] = useState(false);
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const [showApiCall, setShowApiCall] = useState<number | null>(
-    null
-  );
-
+  const [showApiCall, setShowApiCall] = useState<number | null>(null);
   const [showSql, setShowSql] = useState<number | null>(null);
 
-  /* =========================================================
+  /* =======================================================
      SEND MESSAGE
-  ========================================================= */
+  ======================================================= */
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const question = input.trim();
 
     if (!question || isLoading) {
       return;
     }
-
-    /* USER MESSAGE */
 
     const userMessage: Message = {
       id: Date.now(),
@@ -109,119 +111,536 @@ export default function Home() {
       content: question,
     };
 
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-    ]);
-
+    setMessages((previous) => [...previous, userMessage]);
     setInput("");
-
     setIsLoading(true);
 
-    /* TEMPORARY DEMO RESPONSE */
+    try {
+      const normalized = question.toLowerCase();
 
-    setTimeout(() => {
+      let endpoint = "http://127.0.0.1:8000/summary";
+      let answer = "";
+      let chart: ChartInfo | undefined;
+
+      /* ===================================================
+         QUARTER QUERY
+         Example:
+         How did Q2 revenue perform?
+      =================================================== */
+
+      const quarterMatch = normalized.match(/\bq([1-4])\b/);
+
+      if (quarterMatch) {
+        const quarter = `Q${quarterMatch[1]}`;
+
+        endpoint =
+          `http://127.0.0.1:8000/summary/quarter/${quarter}`;
+
+        const response = await fetch(endpoint);
+
+        if (!response.ok) {
+          throw new Error(
+            `Quarter API returned ${response.status}`
+          );
+        }
+
+        const result = await response.json();
+
+        answer =
+          `${quarter} generated ${formatCurrency(
+            result.total_revenue
+          )} in revenue and ${formatCurrency(
+            result.total_profit
+          )} in profit from ${Number(
+            result.total_orders
+          ).toLocaleString()} orders.`;
+
+        chart = {
+          type: "bar",
+          title: `${quarter} Performance`,
+          subtitle: "Revenue and profit",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
+      }
+
+      /* ===================================================
+         YEAR QUERY
+         Example:
+         Show 2025 performance
+      =================================================== */
+
+      else {
+        const yearMatch = normalized.match(
+          /\b(2024|2025|2026)\b/
+        );
+
+        if (yearMatch) {
+          const year = yearMatch[1];
+
+          endpoint =
+            `http://127.0.0.1:8000/summary/year/${year}`;
+
+          const response = await fetch(endpoint);
+
+          if (!response.ok) {
+            throw new Error(
+              `Year API returned ${response.status}`
+            );
+          }
+
+          const result = await response.json();
+
+          answer =
+            `${year} generated ${formatCurrency(
+              result.total_revenue
+            )} in revenue and ${formatCurrency(
+              result.total_profit
+            )} in profit from ${Number(
+              result.total_orders
+            ).toLocaleString()} orders.`;
+
+          chart = {
+            type: "bar",
+            title: `${year} Performance`,
+            subtitle: "Revenue and profit",
+            data: {
+              labels: ["Revenue", "Profit"],
+              values: [
+                Number(result.total_revenue),
+                Number(result.total_profit),
+              ],
+            },
+          };
+        }
+
+        /* =================================================
+           REGIONAL PERFORMANCE
+           Example:
+           Compare regional performance
+        ================================================= */
+
+        else if (
+          normalized.includes("regional") ||
+          normalized.includes("region performance") ||
+          normalized.includes("compare region")
+        ) {
+          endpoint =
+            "http://127.0.0.1:8000/dbt/sales-summary";
+
+          const response = await fetch(endpoint);
+
+          if (!response.ok) {
+            throw new Error(
+              `dbt API returned ${response.status}`
+            );
+          }
+
+          const rows = await response.json();
+
+          const regionTotals: Record<
+            string,
+            {
+              revenue: number;
+              profit: number;
+            }
+          > = {};
+
+          rows.forEach(
+            (row: {
+              region: string;
+              total_revenue: number;
+              total_profit: number;
+            }) => {
+              if (!regionTotals[row.region]) {
+                regionTotals[row.region] = {
+                  revenue: 0,
+                  profit: 0,
+                };
+              }
+
+              regionTotals[row.region].revenue += Number(
+                row.total_revenue
+              );
+
+              regionTotals[row.region].profit += Number(
+                row.total_profit
+              );
+            }
+          );
+
+          const sortedRegions = Object.entries(regionTotals)
+            .sort(
+              (a, b) =>
+                b[1].revenue - a[1].revenue
+            )
+            .slice(0, 5);
+
+          answer =
+            "Here is the regional revenue performance based on the dbt sales summary.";
+
+          chart = {
+            type: "bar",
+            title: "Regional Performance",
+            subtitle: "Top regions by revenue",
+            data: {
+              labels: sortedRegions.map(
+                ([region]) => region
+              ),
+              values: sortedRegions.map(
+                ([, values]) => values.revenue
+              ),
+            },
+          };
+        }
+        // Product query
+const productMatch = normalized.match(
+  /\b(server|desktop|printer|tablet|laptop|monitor)\b/i
+);
+
+if (productMatch) {
+  const product = productMatch[1];
+
+  endpoint = `http://127.0.0.1:8000/summary/product/${encodeURIComponent(product)}`;
+
+  const response = await fetch(endpoint);
+
+  if (!response.ok) {
+    throw new Error("Product API request failed");
+  }
+
+  const result = await response.json();
+
+  answer =
+    `${result.product} generated ` +
+    `${formatCurrency(result.total_revenue)} in revenue and ` +
+    `${formatCurrency(result.total_profit)} in profit from ` +
+    `${result.total_orders.toLocaleString()} orders.`;
+
+  chart = {
+    type: "bar",
+    title: `${result.product} Performance`,
+    subtitle: "Revenue and profit",
+    data: {
+      labels: ["Revenue", "Profit"],
+      values: [
+        Number(result.total_revenue),
+        Number(result.total_profit),
+      ],
+    },
+  };
+}
+      // Channel query
+const channelMatch = normalized.match(
+  /\b(online|enterprise|retail|distributor)\b/i
+);
+
+if (channelMatch) {
+  const channel = channelMatch[1];
+
+  endpoint = `http://127.0.0.1:8000/summary/channel/${encodeURIComponent(channel)}`;
+
+  const response = await fetch(endpoint);
+
+  if (!response.ok) {
+    throw new Error("Channel API request failed");
+  }
+
+  const result = await response.json();
+
+  answer =
+    `${result.channel} generated ` +
+    `${formatCurrency(result.total_revenue)} in revenue and ` +
+    `${formatCurrency(result.total_profit)} in profit from ` +
+    `${result.total_orders.toLocaleString()} orders.`;
+
+  chart = {
+    type: "bar",
+    title: `${result.channel} Performance`,
+    subtitle: "Revenue and profit",
+    data: {
+      labels: ["Revenue", "Profit"],
+      values: [
+        Number(result.total_revenue),
+        Number(result.total_profit),
+      ],
+    },
+  };
+}
+
+// Month query
+const monthMatch = normalized.match(
+  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i
+);
+
+if (monthMatch) {
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const monthName = monthMatch[1];
+  const monthNumber =
+    monthNames.findIndex(
+      (month) => month.toLowerCase() === monthName.toLowerCase()
+    ) + 1;
+
+  endpoint = `http://127.0.0.1:8000/summary/month/${monthNumber}`;
+
+  const response = await fetch(endpoint);
+
+  if (!response.ok) {
+    throw new Error("Month API request failed");
+  }
+
+  const result = await response.json();
+
+  answer =
+    `${monthNames[monthNumber - 1]} generated ` +
+    `${formatCurrency(result.total_revenue)} in revenue and ` +
+    `${formatCurrency(result.total_profit)} in profit from ` +
+    `${result.total_orders.toLocaleString()} orders.`;
+
+  chart = {
+    type: "bar",
+    title: `${monthNames[monthNumber - 1]} Performance`,
+    subtitle: "Revenue and profit",
+    data: {
+      labels: ["Revenue", "Profit"],
+      values: [
+        Number(result.total_revenue),
+        Number(result.total_profit),
+      ],
+    },
+  };
+}
+
+// Cost & Profit query
+const costProfitMatch = normalized.match(
+  /\b(cost|costs|profit|profitability|margin|margins)\b/i
+);
+
+if (costProfitMatch) {
+  endpoint = "http://127.0.0.1:8000/summary/cost-profit";
+
+  const response = await fetch(endpoint);
+
+  if (!response.ok) {
+    throw new Error("Cost-profit API request failed");
+  }
+
+  const result = await response.json();
+
+  answer =
+    `Total cost is ${formatCurrency(result.total_cost)}, ` +
+    `while total profit is ${formatCurrency(result.total_profit)}. ` +
+    `The overall average margin is ${Number(result.avg_margin_percent).toFixed(2)}%.`;
+
+  chart = {
+    type: "bar",
+    title: "Cost & Profit Analysis",
+    subtitle: "Overall financial performance",
+    data: {
+      labels: ["Total Cost", "Total Profit"],
+      values: [
+        Number(result.total_cost),
+        Number(result.total_profit),
+      ],
+    },
+  };
+}
+        /* =================================================
+           SPECIFIC REGION QUERY
+           Examples:
+           How did Asia Pacific perform?
+           Show Europe performance
+        ================================================= */
+
+        else {
+          const regionMatch = normalized.match(
+            /\b(asia pacific|north america|europe|latin america|middle east and africa)\b/i
+          );
+
+          if (regionMatch) {
+            const region = regionMatch[1];
+
+            endpoint =
+              `http://127.0.0.1:8000/summary/region/${encodeURIComponent(
+                region
+              )}`;
+
+            const response = await fetch(endpoint);
+
+            if (!response.ok) {
+              throw new Error(
+                `Region API returned ${response.status}`
+              );
+            }
+
+            const result = await response.json();
+
+            answer =
+              `${result.region} generated ` +
+              `${formatCurrency(
+                result.total_revenue
+              )} in revenue and ` +
+              `${formatCurrency(
+                result.total_profit
+              )} in profit from ` +
+              `${Number(
+                result.total_orders
+              ).toLocaleString()} orders.`;
+
+            /* IMPORTANT:
+               Use chart object here.
+               Do NOT use chartData/chartTitle/chartSubtitle.
+            */
+
+            chart = {
+              type: "bar",
+              title: `${result.region} Performance`,
+              subtitle: "Revenue and profit",
+              data: {
+                labels: ["Revenue", "Profit"],
+                values: [
+                  Number(result.total_revenue),
+                  Number(result.total_profit),
+                ],
+              },
+            };
+          }
+
+          /* ===============================================
+             DEFAULT SUMMARY
+          =============================================== */
+
+          else {
+            const response = await fetch(endpoint);
+
+            if (!response.ok) {
+              throw new Error(
+                `Summary API returned ${response.status}`
+              );
+            }
+
+            const result = await response.json();
+
+            answer =
+              `MetricMind currently has ${Number(
+                result.total_orders
+              ).toLocaleString()} orders, ` +
+              `${formatCurrency(
+                result.total_revenue
+              )} total revenue, ` +
+              `${formatCurrency(
+                result.total_profit
+              )} total profit, and ` +
+              `${Number(
+                result.total_units_sold
+              ).toLocaleString()} units sold.`;
+
+            chart = {
+              type: "bar",
+              title: "Business Summary",
+              subtitle: "Overall MetricMind performance",
+              data: {
+                labels: [
+                  "Revenue",
+                  "Profit",
+                  "Units Sold",
+                ],
+                values: [
+                  Number(result.total_revenue),
+                  Number(result.total_profit),
+                  Number(result.total_units_sold),
+                ],
+              },
+            };
+          }
+        }
+      }
+
+      /* ===================================================
+         ASSISTANT MESSAGE
+      =================================================== */
+
       const assistantMessage: Message = {
         id: Date.now() + 1,
-
         role: "assistant",
-
-        content:
-          "European sales increased during Q3 compared to Q2. Germany contributed the highest share, followed by France and Spain.",
-
-        /* DYNAMIC CHART INFORMATION */
-
-        chart: {
-          type: "bar",
-
-          title: "European Sales",
-
-          subtitle: "Sales by region · Q3",
-
-          data: {
-            labels: [
-              "Germany",
-              "France",
-              "Spain",
-              "Italy",
-            ],
-
-            values: [
-              520,
-              410,
-              280,
-              180,
-            ],
-          },
-        },
-
-        /* API INFORMATION */
-
+        content: answer,
+        chart,
         api: {
-          method: "POST",
-
-          endpoint: "/api/chat",
-
-          request: {
-            question: question,
-            session_id: "demo-session",
-          },
+          method: "GET",
+          endpoint,
+          request: {},
         },
-
-        /* SQL INFORMATION */
-
-        sql: `SELECT
-    region,
-    SUM(sales) AS total_sales
-FROM sales
-WHERE region IN (
-    'Germany',
-    'France',
-    'Spain',
-    'Italy'
-)
-GROUP BY region
-ORDER BY total_sales DESC;`,
       };
 
       setMessages((previous) => [
         ...previous,
         assistantMessage,
       ]);
+    } catch (error) {
+      console.error(
+        "MetricMind API error:",
+        error
+      );
 
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content:
+          "I could not connect to the MetricMind API. Please make sure the FastAPI server is running on port 8000.",
+      };
+
+      setMessages((previous) => [
+        ...previous,
+        errorMessage,
+      ]);
+    } finally {
       setIsLoading(false);
-    }, 1200);
+    }
   };
 
-  /* =========================================================
+  /* =======================================================
      SUGGESTION
-  ========================================================= */
+  ======================================================= */
 
   const handleSuggestionClick = (text: string) => {
     setInput(text);
   };
 
-  /* =========================================================
+  /* =======================================================
      NEW CHAT
-  ========================================================= */
+  ======================================================= */
 
   const handleNewChat = () => {
     setMessages([]);
-
     setInput("");
-
     setIsLoading(false);
-
     setShowApiCall(null);
-
     setShowSql(null);
-
     setSidebarOpen(false);
   };
 
-  /* =========================================================
+  /* =======================================================
      KEYBOARD
-  ========================================================= */
+  ======================================================= */
 
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>
@@ -231,23 +650,21 @@ ORDER BY total_sales DESC;`,
       !event.shiftKey
     ) {
       event.preventDefault();
-
       handleSend();
     }
   };
 
-  /* =========================================================
+  /* =======================================================
      UI
-  ========================================================= */
+  ======================================================= */
 
   return (
     <main className="min-h-screen bg-[#FCFBFB] text-[#192A56]">
-
       <div className="flex min-h-screen">
 
-        {/* =====================================================
+        {/* =================================================
             MOBILE OVERLAY
-        ===================================================== */}
+        ================================================= */}
 
         {sidebarOpen && (
           <div
@@ -256,9 +673,9 @@ ORDER BY total_sales DESC;`,
           />
         )}
 
-        {/* =====================================================
+        {/* =================================================
             SIDEBAR
-        ===================================================== */}
+        ================================================= */}
 
         <aside
           className={`
@@ -280,20 +697,16 @@ ORDER BY total_sales DESC;`,
           {/* LOGO */}
 
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-
             <div className="flex items-center gap-3">
 
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7D794]">
-
                 <BarChart3
                   size={21}
                   className="text-[#192A56]"
                 />
-
               </div>
 
               <div>
-
                 <h1 className="text-lg font-bold tracking-tight">
                   MetricMind
                 </h1>
@@ -301,7 +714,6 @@ ORDER BY total_sales DESC;`,
                 <p className="text-[11px] text-white/50">
                   Semantic BI Engine
                 </p>
-
               </div>
 
             </div>
@@ -312,13 +724,11 @@ ORDER BY total_sales DESC;`,
             >
               <X size={20} />
             </button>
-
           </div>
 
           {/* NEW CHAT */}
 
           <div className="px-4 pt-5">
-
             <button
               onClick={handleNewChat}
               className="
@@ -333,13 +743,9 @@ ORDER BY total_sales DESC;`,
                 hover:bg-[#f3cf7d]
               "
             >
-
               <Plus size={18} />
-
               New Chat
-
             </button>
-
           </div>
 
           {/* CONVERSATION HISTORY */}
@@ -361,13 +767,11 @@ ORDER BY total_sales DESC;`,
                   hover:bg-white/10
                 "
               >
-
                 <MessageSquare size={16} />
 
                 <span className="truncate">
                   European Sales Analysis
                 </span>
-
               </button>
 
               <button
@@ -379,13 +783,11 @@ ORDER BY total_sales DESC;`,
                   hover:bg-white/10
                 "
               >
-
                 <MessageSquare size={16} />
 
                 <span className="truncate">
                   Q3 Revenue Performance
                 </span>
-
               </button>
 
               <button
@@ -397,33 +799,27 @@ ORDER BY total_sales DESC;`,
                   hover:bg-white/10
                 "
               >
-
                 <MessageSquare size={16} />
 
                 <span className="truncate">
                   Regional Comparison
                 </span>
-
               </button>
 
             </div>
-
           </div>
 
           {/* SYSTEM STATUS */}
 
           <div className="border-t border-white/10 p-4">
-
             <div className="rounded-xl bg-white/5 p-4">
 
               <div className="flex items-center gap-2">
-
                 <span className="h-2 w-2 rounded-full bg-green-400" />
 
                 <span className="text-xs text-white/70">
                   System Online
                 </span>
-
               </div>
 
               <p className="mt-2 text-[11px] leading-relaxed text-white/40">
@@ -431,20 +827,17 @@ ORDER BY total_sales DESC;`,
               </p>
 
             </div>
-
           </div>
 
         </aside>
 
-        {/* =====================================================
+        {/* =================================================
             MAIN
-        ===================================================== */}
+        ================================================= */}
 
         <section className="flex min-w-0 flex-1 flex-col">
 
-          {/* ===================================================
-              HEADER
-          =================================================== */}
+          {/* HEADER */}
 
           <header
             className="
@@ -472,13 +865,10 @@ ORDER BY total_sales DESC;`,
                   lg:hidden
                 "
               >
-
                 <Menu size={22} />
-
               </button>
 
               <div>
-
                 <p className="text-xs text-gray-500">
                   Analytics Workspace
                 </p>
@@ -486,7 +876,6 @@ ORDER BY total_sales DESC;`,
                 <h2 className="text-base font-semibold">
                   Good evening
                 </h2>
-
               </div>
 
             </div>
@@ -505,9 +894,7 @@ ORDER BY total_sales DESC;`,
 
           </header>
 
-          {/* ===================================================
-              CONTENT
-          =================================================== */}
+          {/* CONTENT */}
 
           <div className="flex flex-1 flex-col">
 
@@ -521,12 +908,10 @@ ORDER BY total_sales DESC;`,
                 {/* ICON */}
 
                 <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#192A56]">
-
                   <Sparkles
                     size={28}
                     className="text-[#F7D794]"
                   />
-
                 </div>
 
                 {/* TITLE */}
@@ -550,7 +935,6 @@ ORDER BY total_sales DESC;`,
                 <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
                   {suggestions.map((suggestion) => {
-
                     const Icon = suggestion.icon;
 
                     return (
@@ -579,12 +963,10 @@ ORDER BY total_sales DESC;`,
                         <div className="flex items-center justify-between">
 
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7D794]/40">
-
                             <Icon
                               size={19}
                               className="text-[#192A56]"
                             />
-
                           </div>
 
                           <ChevronRight
@@ -643,12 +1025,10 @@ ORDER BY total_sales DESC;`,
 
                       {item.role === "assistant" && (
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#192A56]">
-
                           <Bot
                             size={18}
                             className="text-[#F7D794]"
                           />
-
                         </div>
                       )}
 
@@ -680,11 +1060,9 @@ ORDER BY total_sales DESC;`,
                             }
                           `}
                         >
-
                           {item.role === "user"
                             ? "You"
                             : "MetricMind"}
-
                         </div>
 
                         {/* MESSAGE */}
@@ -702,43 +1080,26 @@ ORDER BY total_sales DESC;`,
                             }
                           `}
                         >
-
-                          <p>
-                            {item.content}
-                          </p>
-
+                          <p>{item.content}</p>
                         </div>
 
-                        {/* =================================================
-                            ASSISTANT RESULT
-                        ================================================= */}
+                        {/* ASSISTANT RESULT */}
 
                         {item.role === "assistant" &&
                           item.chart && (
+
                             <div className="mt-5">
 
-                              {/* ================================
-                                  DYNAMIC CHART
-                              ================================= */}
+                              {/* DYNAMIC CHART */}
 
                               <DynamicChart
-                                type={
-                                  item.chart.type
-                                }
-                                title={
-                                  item.chart.title
-                                }
-                                subtitle={
-                                  item.chart.subtitle
-                                }
-                                data={
-                                  item.chart.data
-                                }
+                                type={item.chart.type}
+                                title={item.chart.title}
+                                subtitle={item.chart.subtitle}
+                                data={item.chart.data}
                               />
 
-                              {/* ================================
-                                  ACTION BUTTONS
-                              ================================= */}
+                              {/* ACTION BUTTONS */}
 
                               <div className="mt-3 flex flex-wrap gap-2">
 
@@ -747,8 +1108,7 @@ ORDER BY total_sales DESC;`,
                                 <button
                                   onClick={() =>
                                     setShowApiCall(
-                                      showApiCall ===
-                                        item.id
+                                      showApiCall === item.id
                                         ? null
                                         : item.id
                                     )
@@ -767,12 +1127,9 @@ ORDER BY total_sales DESC;`,
                                     hover:bg-[#192A56]/5
                                   "
                                 >
-
-                                  {showApiCall ===
-                                  item.id
+                                  {showApiCall === item.id
                                     ? "Hide API Call"
                                     : "View API Call"}
-
                                 </button>
 
                                 {/* SQL BUTTON */}
@@ -780,8 +1137,7 @@ ORDER BY total_sales DESC;`,
                                 <button
                                   onClick={() =>
                                     setShowSql(
-                                      showSql ===
-                                        item.id
+                                      showSql === item.id
                                         ? null
                                         : item.id
                                     )
@@ -800,22 +1156,18 @@ ORDER BY total_sales DESC;`,
                                     hover:bg-[#192A56]/5
                                   "
                                 >
-
                                   {showSql === item.id
                                     ? "Hide SQL"
                                     : "View SQL"}
-
                                 </button>
 
                               </div>
 
-                              {/* ================================
-                                  API PANEL
-                              ================================= */}
+                              {/* API PANEL */}
 
-                              {showApiCall ===
-                                item.id &&
+                              {showApiCall === item.id &&
                                 item.api && (
+
                                   <div className="mt-3 rounded-xl border border-[#192A56]/10 bg-[#192A56] p-4">
 
                                     <div className="mb-3 flex items-center justify-between">
@@ -825,39 +1177,31 @@ ORDER BY total_sales DESC;`,
                                       </h4>
 
                                       <span className="rounded-md bg-white/10 px-2 py-1 text-[10px] text-white/60">
-                                        {
-                                          item.api
-                                            .method
-                                        }
+                                        {item.api.method}
                                       </span>
 
                                     </div>
 
                                     <p className="mb-3 text-xs text-white/60">
-                                      {
-                                        item.api
-                                          .endpoint
-                                      }
+                                      {item.api.endpoint}
                                     </p>
 
                                     <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-white/80">
-{JSON.stringify(
-  item.api.request,
-  null,
-  2
-)}
+                                      {JSON.stringify(
+                                        item.api.request,
+                                        null,
+                                        2
+                                      )}
                                     </pre>
 
                                   </div>
                                 )}
 
-                              {/* ================================
-                                  SQL PANEL
-                              ================================= */}
+                              {/* SQL PANEL */}
 
-                              {showSql ===
-                                item.id &&
+                              {showSql === item.id &&
                                 item.sql && (
+
                                   <div className="mt-3 rounded-xl border border-[#192A56]/10 bg-[#192A56] p-4">
 
                                     <div className="mb-3">
@@ -869,9 +1213,7 @@ ORDER BY total_sales DESC;`,
                                     </div>
 
                                     <pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-white/80">
-                                      {
-                                        item.sql
-                                      }
+                                      {item.sql}
                                     </pre>
 
                                   </div>
@@ -886,33 +1228,26 @@ ORDER BY total_sales DESC;`,
 
                       {item.role === "user" && (
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EDA6A3]">
-
                           <User
                             size={18}
                             className="text-[#192A56]"
                           />
-
                         </div>
                       )}
 
                     </div>
-
                   ))}
 
-                  {/* =================================================
-                      LOADING
-                  ================================================= */}
+                  {/* LOADING */}
 
                   {isLoading && (
                     <div className="flex gap-3 sm:gap-4">
 
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#192A56]">
-
                         <Bot
                           size={18}
                           className="text-[#F7D794]"
                         />
-
                       </div>
 
                       <div>
@@ -930,16 +1265,14 @@ ORDER BY total_sales DESC;`,
                             <span
                               className="h-2 w-2 animate-bounce rounded-full bg-[#192A56]"
                               style={{
-                                animationDelay:
-                                  "150ms",
+                                animationDelay: "150ms",
                               }}
                             />
 
                             <span
                               className="h-2 w-2 animate-bounce rounded-full bg-[#192A56]"
                               style={{
-                                animationDelay:
-                                  "300ms",
+                                animationDelay: "300ms",
                               }}
                             />
 
@@ -953,7 +1286,6 @@ ORDER BY total_sales DESC;`,
                   )}
 
                 </div>
-
               </div>
             )}
 
@@ -970,9 +1302,7 @@ ORDER BY total_sales DESC;`,
                   <textarea
                     value={input}
                     onChange={(event) =>
-                      setInput(
-                        event.target.value
-                      )
+                      setInput(event.target.value)
                     }
                     onKeyDown={handleKeyDown}
                     placeholder="Ask a question about your business data..."
@@ -998,8 +1328,7 @@ ORDER BY total_sales DESC;`,
                   <button
                     onClick={handleSend}
                     disabled={
-                      !input.trim() ||
-                      isLoading
+                      !input.trim() || isLoading
                     }
                     className="
                       absolute
@@ -1020,19 +1349,15 @@ ORDER BY total_sales DESC;`,
                     "
                     aria-label="Send message"
                   >
-
                     <Send size={17} />
-
                   </button>
 
                 </div>
 
                 <div className="mt-2 px-1">
-
                   <p className="text-[10px] text-gray-400 sm:text-xs">
                     Press Enter to send · Shift + Enter for a new line
                   </p>
-
                 </div>
 
               </div>
@@ -1044,7 +1369,6 @@ ORDER BY total_sales DESC;`,
         </section>
 
       </div>
-
     </main>
   );
 }
