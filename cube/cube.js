@@ -1,10 +1,3 @@
-module.exports = {
-  database: {
-    type: `postgres`,
-    host: `localhost`,
-    port: 5432,
-    database: `metricmind`,
-    user: `metricmind`,
-    password: process.env.CUBE_DB_PASSWORD
-  }
-};
+// Database credentials are read from the CUBEJS_DB_* environment variables.
+// The semantic model lives in ./model (Cube's default model directory).
+module.exports = {};

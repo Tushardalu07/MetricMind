@@ -2,6 +2,11 @@ cube(`Sales`, {
   sql_table: `public.sales_summary`,
 
   measures: {
+    totalOrders: {
+      type: `sum`,
+      sql: `${CUBE}.total_orders`
+    },
+
     totalRevenue: {
       type: `sum`,
       sql: `total_revenue`
@@ -9,48 +14,54 @@ cube(`Sales`, {
 
     totalProfit: {
       type: `sum`,
-      sql: `total_profit`
+      sql: `${CUBE}.total_profit`
+    },
+
+    totalCost: {
+      type: `sum`,
+      sql: `${CUBE}.total_cost`
     },
 
     totalUnitsSold: {
       type: `sum`,
-      sql: `total_units_sold`
+      sql: `${CUBE}.total_units_sold`
     },
 
     averageMargin: {
-      type: `avg`,
-      sql: `avg_margin_percent`
+      type: `number`,
+      sql: `{totalProfit} / NULLIF({totalRevenue}, 0)`,
+      format: `percent`
     }
   },
 
   dimensions: {
     year: {
-      sql: `year`,
+      sql: `${CUBE}.year`,
       type: `number`
     },
 
     quarter: {
-      sql: `quarter`,
+      sql: `${CUBE}.quarter`,
       type: `string`
     },
 
     region: {
-      sql: `region`,
+      sql: `${CUBE}.region`,
       type: `string`
     },
 
     country: {
-      sql: `country`,
+      sql: `${CUBE}.country`,
       type: `string`
     },
 
     product: {
-      sql: `product`,
+      sql: `${CUBE}.product`,
       type: `string`
     },
 
     channel: {
-      sql: `channel`,
+      sql: `${CUBE}.channel`,
       type: `string`
     }
   }
