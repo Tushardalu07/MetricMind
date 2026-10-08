@@ -49,6 +49,19 @@ type Message = {
   sql?: string;
 };
 
+class ApiError extends Error {
+  status: number;
+  detail?: string;
+
+  constructor(status: number, message: string, detail?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+
 /* =========================================================
    SUGGESTIONS
 ========================================================= */
@@ -121,39 +134,168 @@ export default function Home() {
       let endpoint = "http://127.0.0.1:8000/summary";
       let answer = "";
       let chart: ChartInfo | undefined;
+      let sql: string | undefined;
 
-      /* ===================================================
-         QUARTER QUERY
-         Example:
-         How did Q2 revenue perform?
-      =================================================== */
-
-      const quarterMatch = normalized.match(/\bq([1-4])\b/);
-
-      if (quarterMatch) {
-        const quarter = `Q${quarterMatch[1]}`;
-
-        endpoint =
-          `http://127.0.0.1:8000/summary/quarter/${quarter}`;
-
-        const response = await fetch(endpoint);
-
+      // Helper to fetch and handle HTTP errors
+      const fetchApi = async (url: string) => {
+        const response = await fetch(url);
         if (!response.ok) {
-          throw new Error(
-            `Quarter API returned ${response.status}`
+          let detail = "";
+          try {
+            const errData = await response.json();
+            if (errData && errData.detail) {
+              detail =
+                typeof errData.detail === "string"
+                  ? errData.detail
+                  : JSON.stringify(errData.detail);
+            }
+          } catch {
+            // Non-JSON response
+          }
+
+          console.error(
+            `MetricMind API returned HTTP status ${response.status} from ${url}:`,
+            detail || response.statusText
+          );
+
+          throw new ApiError(
+            response.status,
+            detail || `API request failed with status ${response.status}`,
+            detail
           );
         }
+        return response.json();
+      };
 
-        const result = await response.json();
+      // Match patterns
+      const regionMatch = normalized.match(
+        /\b(asia pacific|north america|latin america|middle east and africa|middle east|europe|european)\b/i
+      );
+      const quarterMatch = normalized.match(/\b(q[1-4]|quarter\s*[1-4])\b/i);
+      const productMatch = normalized.match(
+        /\b(laptops?|smartphones?|tablets?|desktops?|monitors?|printers?|servers?)\b/i
+      );
+      const channelMatch = normalized.match(
+        /\b(online|retail|enterprise|distributors?)\b/i
+      );
+      const monthMatch = normalized.match(
+        /\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\b/i
+      );
+      const yearMatch = normalized.match(/\b(20\d{2})\b/);
+      const regionalComparisonMatch =
+        normalized.includes("compare region") ||
+        normalized.includes("regional performance") ||
+        normalized.includes("compare regional") ||
+        normalized.includes("which region") ||
+        normalized.includes("region performance") ||
+        /\bregions?\b/i.test(normalized) ||
+        /\bregional\b/i.test(normalized);
+      const costProfitMatch = normalized.match(
+        /\b(costs?|profits?|profitability|margins?)\b/i
+      );
 
-        answer =
-          `${quarter} generated ${formatCurrency(
-            result.total_revenue
-          )} in revenue and ${formatCurrency(
-            result.total_profit
-          )} in profit from ${Number(
-            result.total_orders
-          ).toLocaleString()} orders.`;
+      /* ===================================================
+         1. REGION (Priority 1)
+         Examples:
+         How did Asia Pacific perform?
+         What was Europe revenue?
+      =================================================== */
+      if (regionMatch) {
+        let region = "Europe";
+        const matchedStr = regionMatch[1].toLowerCase();
+
+        if (matchedStr === "asia pacific") {
+          region = "Asia Pacific";
+        } else if (matchedStr === "north america") {
+          region = "North America";
+        } else if (matchedStr === "latin america") {
+          region = "Latin America";
+        } else if (matchedStr === "middle east and africa") {
+          region = "Middle East and Africa";
+        } else if (matchedStr === "middle east") {
+          region = "Middle East";
+        } else if (matchedStr === "europe" || matchedStr === "european") {
+          region = "Europe";
+        }
+
+        endpoint = `http://127.0.0.1:8000/summary/region/${encodeURIComponent(
+          region
+        )}`;
+
+        const result = await fetchApi(endpoint);
+
+        // If dataset has 'Middle East' for 'Middle East and Africa' queries with 0 orders, fallback gracefully
+        if (result.total_orders === 0 && region === "Middle East and Africa") {
+          try {
+            const fallbackResult = await fetchApi(
+              "http://127.0.0.1:8000/summary/region/Middle%20East"
+            );
+            if (fallbackResult && fallbackResult.total_orders > 0) {
+              result.total_orders = fallbackResult.total_orders;
+              result.total_units_sold = fallbackResult.total_units_sold;
+              result.total_revenue = fallbackResult.total_revenue;
+              result.total_profit = fallbackResult.total_profit;
+            }
+          } catch {
+            // Keep original result if fallback fails
+          }
+        }
+
+        const displayRegion = result.region || region;
+
+        answer = `${displayRegion} generated ${formatCurrency(
+          result.total_revenue
+        )} in revenue and ${formatCurrency(
+          result.total_profit
+        )} in profit from ${Number(
+          result.total_orders
+        ).toLocaleString()} orders.`;
+
+        chart = {
+          type: "bar",
+          title: `${displayRegion} Performance`,
+          subtitle: "Revenue and profit",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
+
+        sql = `SELECT
+    region,
+    COUNT(*) AS total_orders,
+    SUM(units_sold) AS total_units_sold,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit
+FROM sales
+WHERE LOWER(region) = LOWER('${region}')
+GROUP BY region;`;
+      }
+
+      /* ===================================================
+         2. QUARTER (Priority 2)
+         Examples:
+         How did Q3 perform?
+         What was Q2 revenue?
+      =================================================== */
+      else if (quarterMatch) {
+        const quarterNum = quarterMatch[0].replace(/[^1-4]/g, "");
+        const quarter = `Q${quarterNum}`;
+
+        endpoint = `http://127.0.0.1:8000/summary/quarter/${quarter}`;
+
+        const result = await fetchApi(endpoint);
+
+        answer = `${quarter} generated ${formatCurrency(
+          result.total_revenue
+        )} in revenue and ${formatCurrency(
+          result.total_profit
+        )} in profit from ${Number(
+          result.total_orders
+        ).toLocaleString()} orders.`;
 
         chart = {
           type: "bar",
@@ -167,412 +309,436 @@ export default function Home() {
             ],
           },
         };
+
+        sql = `SELECT
+    quarter,
+    COUNT(*) AS total_orders,
+    SUM(units_sold) AS total_units_sold,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit
+FROM sales
+WHERE UPPER(quarter) = '${quarter}'
+GROUP BY quarter;`;
       }
 
       /* ===================================================
-         YEAR QUERY
-         Example:
-         Show 2025 performance
+         3. PRODUCT (Priority 3)
+         Examples:
+         How did Laptop perform?
+         How did laptops perform?
+         What was the revenue from laptops?
+         Show smartphone performance
       =================================================== */
+      else if (productMatch) {
+        const productMap: Record<string, string> = {
+          laptop: "Laptop",
+          laptops: "Laptop",
+          smartphone: "Smartphone",
+          smartphones: "Smartphone",
+          tablet: "Tablet",
+          tablets: "Tablet",
+          desktop: "Desktop",
+          desktops: "Desktop",
+          monitor: "Monitor",
+          monitors: "Monitor",
+          printer: "Printer",
+          printers: "Printer",
+          server: "Server",
+          servers: "Server",
+        };
 
-      else {
-        const yearMatch = normalized.match(
-          /\b(2024|2025|2026)\b/
-        );
+        const matchedProductKey = productMatch[1].toLowerCase();
+        const product = productMap[matchedProductKey] || productMatch[1];
 
-        if (yearMatch) {
-          const year = yearMatch[1];
+        endpoint = `http://127.0.0.1:8000/summary/product/${encodeURIComponent(
+          product
+        )}`;
 
-          endpoint =
-            `http://127.0.0.1:8000/summary/year/${year}`;
+        const result = await fetchApi(endpoint);
 
-          const response = await fetch(endpoint);
+        const displayProduct = result.product || product;
 
-          if (!response.ok) {
-            throw new Error(
-              `Year API returned ${response.status}`
-            );
+        answer = `${displayProduct} generated ${formatCurrency(
+          result.total_revenue
+        )} in revenue and ${formatCurrency(
+          result.total_profit
+        )} in profit from ${Number(
+          result.total_orders
+        ).toLocaleString()} orders.`;
+
+        chart = {
+          type: "bar",
+          title: `${displayProduct} Performance`,
+          subtitle: "Revenue and profit",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
+
+        sql = `SELECT
+    product,
+    COUNT(*) AS total_orders,
+    SUM(units_sold) AS total_units_sold,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit
+FROM sales
+WHERE LOWER(product) = LOWER('${product}')
+GROUP BY product;`;
+      }
+
+      /* ===================================================
+         4. CHANNEL (Priority 4)
+         Examples:
+         How did Online perform?
+         How did Retail perform?
+         Show Enterprise performance
+      =================================================== */
+      else if (channelMatch) {
+        const channelMap: Record<string, string> = {
+          online: "Online",
+          retail: "Retail",
+          enterprise: "Enterprise",
+          distributor: "Distributor",
+          distributors: "Distributor",
+        };
+
+        const matchedChannelKey = channelMatch[1].toLowerCase();
+        const channel = channelMap[matchedChannelKey] || channelMatch[1];
+
+        endpoint = `http://127.0.0.1:8000/summary/channel/${encodeURIComponent(
+          channel
+        )}`;
+
+        const result = await fetchApi(endpoint);
+
+        const displayChannel = result.channel || channel;
+
+        answer = `${displayChannel} generated ${formatCurrency(
+          result.total_revenue
+        )} in revenue and ${formatCurrency(
+          result.total_profit
+        )} in profit from ${Number(
+          result.total_orders
+        ).toLocaleString()} orders.`;
+
+        chart = {
+          type: "bar",
+          title: `${displayChannel} Performance`,
+          subtitle: "Revenue and profit",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
+
+        sql = `SELECT
+    channel,
+    COUNT(*) AS total_orders,
+    SUM(units_sold) AS total_units_sold,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit
+FROM sales
+WHERE LOWER(channel) = LOWER('${channel}')
+GROUP BY channel;`;
+      }
+
+      /* ===================================================
+         5. MONTH (Priority 5)
+         Examples:
+         How did March perform?
+         What was April revenue?
+      =================================================== */
+      else if (monthMatch) {
+        const monthMap: Record<string, { num: number; name: string }> = {
+          january: { num: 1, name: "January" },
+          jan: { num: 1, name: "January" },
+          february: { num: 2, name: "February" },
+          feb: { num: 2, name: "February" },
+          march: { num: 3, name: "March" },
+          mar: { num: 3, name: "March" },
+          april: { num: 4, name: "April" },
+          apr: { num: 4, name: "April" },
+          may: { num: 5, name: "May" },
+          june: { num: 6, name: "June" },
+          jun: { num: 6, name: "June" },
+          july: { num: 7, name: "July" },
+          jul: { num: 7, name: "July" },
+          august: { num: 8, name: "August" },
+          aug: { num: 8, name: "August" },
+          september: { num: 9, name: "September" },
+          sept: { num: 9, name: "September" },
+          sep: { num: 9, name: "September" },
+          october: { num: 10, name: "October" },
+          oct: { num: 10, name: "October" },
+          november: { num: 11, name: "November" },
+          nov: { num: 11, name: "November" },
+          december: { num: 12, name: "December" },
+          dec: { num: 12, name: "December" },
+        };
+
+        const matchedMonthKey = monthMatch[1].toLowerCase();
+        const monthInfo = monthMap[matchedMonthKey] || {
+          num: 1,
+          name: "January",
+        };
+
+        // Backend expects month: int
+        endpoint = `http://127.0.0.1:8000/summary/month/${monthInfo.num}`;
+
+        const result = await fetchApi(endpoint);
+
+        answer = `${monthInfo.name} generated ${formatCurrency(
+          result.total_revenue
+        )} in revenue and ${formatCurrency(
+          result.total_profit
+        )} in profit from ${Number(
+          result.total_orders
+        ).toLocaleString()} orders.`;
+
+        chart = {
+          type: "bar",
+          title: `${monthInfo.name} Performance`,
+          subtitle: "Revenue and profit",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
+
+        sql = `SELECT
+    month,
+    COUNT(*) AS total_orders,
+    SUM(units_sold) AS total_units_sold,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit
+FROM sales
+WHERE month = ${monthInfo.num}
+GROUP BY month;`;
+      }
+
+      /* ===================================================
+         6. YEAR (Priority 6)
+         Examples:
+         How did 2025 perform?
+         What was the revenue in 2024?
+      =================================================== */
+      else if (yearMatch) {
+        const year = parseInt(yearMatch[1], 10);
+
+        endpoint = `http://127.0.0.1:8000/summary/year/${year}`;
+
+        const result = await fetchApi(endpoint);
+
+        answer = `${year} generated ${formatCurrency(
+          result.total_revenue
+        )} in revenue and ${formatCurrency(
+          result.total_profit
+        )} in profit from ${Number(
+          result.total_orders
+        ).toLocaleString()} orders.`;
+
+        chart = {
+          type: "bar",
+          title: `${year} Performance`,
+          subtitle: "Revenue and profit",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
+
+        sql = `SELECT
+    year,
+    COUNT(*) AS total_orders,
+    SUM(units_sold) AS total_units_sold,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit
+FROM sales
+WHERE year = ${year}
+GROUP BY year;`;
+      }
+
+      /* ===================================================
+         7. REGIONAL COMPARISON (Priority 7)
+         Examples:
+         Compare regional performance
+         Compare regions
+         Which region performed best?
+         Show regional performance
+      =================================================== */
+      else if (regionalComparisonMatch) {
+        endpoint = "http://127.0.0.1:8000/dbt/sales-summary";
+
+        const rows = await fetchApi(endpoint);
+
+        const regionTotals: Record<
+          string,
+          {
+            revenue: number;
+            profit: number;
           }
+        > = {};
 
-          const result = await response.json();
-
-          answer =
-            `${year} generated ${formatCurrency(
-              result.total_revenue
-            )} in revenue and ${formatCurrency(
-              result.total_profit
-            )} in profit from ${Number(
-              result.total_orders
-            ).toLocaleString()} orders.`;
-
-          chart = {
-            type: "bar",
-            title: `${year} Performance`,
-            subtitle: "Revenue and profit",
-            data: {
-              labels: ["Revenue", "Profit"],
-              values: [
-                Number(result.total_revenue),
-                Number(result.total_profit),
-              ],
-            },
-          };
-        }
-
-        /* =================================================
-           REGIONAL PERFORMANCE
-           Example:
-           Compare regional performance
-        ================================================= */
-
-        else if (
-          normalized.includes("regional") ||
-          normalized.includes("region performance") ||
-          normalized.includes("compare region")
-        ) {
-          endpoint =
-            "http://127.0.0.1:8000/dbt/sales-summary";
-
-          const response = await fetch(endpoint);
-
-          if (!response.ok) {
-            throw new Error(
-              `dbt API returned ${response.status}`
-            );
-          }
-
-          const rows = await response.json();
-
-          const regionTotals: Record<
-            string,
-            {
-              revenue: number;
-              profit: number;
-            }
-          > = {};
-
+        if (Array.isArray(rows)) {
           rows.forEach(
             (row: {
               region: string;
               total_revenue: number;
               total_profit: number;
             }) => {
-              if (!regionTotals[row.region]) {
-                regionTotals[row.region] = {
-                  revenue: 0,
-                  profit: 0,
-                };
+              if (row && row.region) {
+                if (!regionTotals[row.region]) {
+                  regionTotals[row.region] = {
+                    revenue: 0,
+                    profit: 0,
+                  };
+                }
+
+                regionTotals[row.region].revenue += Number(
+                  row.total_revenue || 0
+                );
+
+                regionTotals[row.region].profit += Number(
+                  row.total_profit || 0
+                );
               }
-
-              regionTotals[row.region].revenue += Number(
-                row.total_revenue
-              );
-
-              regionTotals[row.region].profit += Number(
-                row.total_profit
-              );
             }
           );
-
-          const sortedRegions = Object.entries(regionTotals)
-            .sort(
-              (a, b) =>
-                b[1].revenue - a[1].revenue
-            )
-            .slice(0, 5);
-
-          answer =
-            "Here is the regional revenue performance based on the dbt sales summary.";
-
-          chart = {
-            type: "bar",
-            title: "Regional Performance",
-            subtitle: "Top regions by revenue",
-            data: {
-              labels: sortedRegions.map(
-                ([region]) => region
-              ),
-              values: sortedRegions.map(
-                ([, values]) => values.revenue
-              ),
-            },
-          };
         }
-        // Product query
-const productMatch = normalized.match(
-  /\b(server|desktop|printer|tablet|laptop|monitor)\b/i
-);
 
-if (productMatch) {
-  const product = productMatch[1];
+        const sortedRegions = Object.entries(regionTotals)
+          .sort((a, b) => b[1].revenue - a[1].revenue)
+          .slice(0, 5);
 
-  endpoint = `http://127.0.0.1:8000/summary/product/${encodeURIComponent(product)}`;
+        answer =
+          "Here is the regional revenue performance based on the dbt sales summary.";
 
-  const response = await fetch(endpoint);
+        chart = {
+          type: "bar",
+          title: "Regional Performance",
+          subtitle: "Top regions by revenue",
+          data: {
+            labels: sortedRegions.map(([reg]) => reg),
+            values: sortedRegions.map(([, values]) => values.revenue),
+          },
+        };
 
-  if (!response.ok) {
-    throw new Error("Product API request failed");
-  }
+        sql = `SELECT
+    year,
+    quarter,
+    region,
+    country,
+    product,
+    channel,
+    total_units_sold,
+    total_revenue,
+    total_cost,
+    total_profit,
+    avg_margin_percent
+FROM public.sales_summary
+ORDER BY year, quarter, region
+LIMIT 100;`;
+      }
 
-  const result = await response.json();
+      /* ===================================================
+         8. COST / PROFIT / MARGIN (Priority 8)
+         Examples:
+         Show cost and profit
+         What is the total cost?
+         Show profitability
+         What is the profit margin?
+      =================================================== */
+      else if (costProfitMatch) {
+        endpoint = "http://127.0.0.1:8000/summary/cost-profit";
 
-  answer =
-    `${result.product} generated ` +
-    `${formatCurrency(result.total_revenue)} in revenue and ` +
-    `${formatCurrency(result.total_profit)} in profit from ` +
-    `${result.total_orders.toLocaleString()} orders.`;
+        const result = await fetchApi(endpoint);
 
-  chart = {
-    type: "bar",
-    title: `${result.product} Performance`,
-    subtitle: "Revenue and profit",
-    data: {
-      labels: ["Revenue", "Profit"],
-      values: [
-        Number(result.total_revenue),
-        Number(result.total_profit),
-      ],
-    },
-  };
-}
-      // Channel query
-const channelMatch = normalized.match(
-  /\b(online|enterprise|retail|distributor)\b/i
-);
+        const margin =
+          result.average_margin_percent ??
+          result.avg_margin_percent ??
+          0;
 
-if (channelMatch) {
-  const channel = channelMatch[1];
+        answer = `Total cost is ${formatCurrency(
+          result.total_cost
+        )}, while total profit is ${formatCurrency(
+          result.total_profit
+        )}. The overall average margin is ${Number(margin).toFixed(2)}%.`;
 
-  endpoint = `http://127.0.0.1:8000/summary/channel/${encodeURIComponent(channel)}`;
+        chart = {
+          type: "bar",
+          title: "Cost & Profit Analysis",
+          subtitle: "Overall financial performance",
+          data: {
+            labels: ["Total Cost", "Total Profit"],
+            values: [
+              Number(result.total_cost),
+              Number(result.total_profit),
+            ],
+          },
+        };
 
-  const response = await fetch(endpoint);
+        sql = `SELECT
+    SUM(material_cost) AS total_material_cost,
+    SUM(shipping_cost) AS total_shipping_cost,
+    SUM(labor_cost) AS total_labor_cost,
+    SUM(marketing_cost) AS total_marketing_cost,
+    SUM(total_cost) AS total_cost,
+    SUM(profit) AS total_profit,
+    AVG(margin_percent) AS average_margin_percent
+FROM sales;`;
+      }
 
-  if (!response.ok) {
-    throw new Error("Channel API request failed");
-  }
+      /* ===================================================
+         9. DEFAULT SUMMARY (Priority 9)
+         General questions
+      =================================================== */
+      else {
+        endpoint = "http://127.0.0.1:8000/summary";
 
-  const result = await response.json();
+        const result = await fetchApi(endpoint);
 
-  answer =
-    `${result.channel} generated ` +
-    `${formatCurrency(result.total_revenue)} in revenue and ` +
-    `${formatCurrency(result.total_profit)} in profit from ` +
-    `${result.total_orders.toLocaleString()} orders.`;
+        answer = `MetricMind currently has ${Number(
+          result.total_orders
+        ).toLocaleString()} orders, ${formatCurrency(
+          result.total_revenue
+        )} total revenue, ${formatCurrency(
+          result.total_profit
+        )} total profit, and ${Number(
+          result.total_units_sold
+        ).toLocaleString()} units sold.`;
 
-  chart = {
-    type: "bar",
-    title: `${result.channel} Performance`,
-    subtitle: "Revenue and profit",
-    data: {
-      labels: ["Revenue", "Profit"],
-      values: [
-        Number(result.total_revenue),
-        Number(result.total_profit),
-      ],
-    },
-  };
-}
+        chart = {
+          type: "bar",
+          title: "Business Summary",
+          subtitle: "Overall MetricMind performance",
+          data: {
+            labels: ["Revenue", "Profit"],
+            values: [
+              Number(result.total_revenue),
+              Number(result.total_profit),
+            ],
+          },
+        };
 
-// Month query
-const monthMatch = normalized.match(
-  /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i
-);
-
-if (monthMatch) {
-  const monthNames = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-
-  const monthName = monthMatch[1];
-  const monthNumber =
-    monthNames.findIndex(
-      (month) => month.toLowerCase() === monthName.toLowerCase()
-    ) + 1;
-
-  endpoint = `http://127.0.0.1:8000/summary/month/${monthNumber}`;
-
-  const response = await fetch(endpoint);
-
-  if (!response.ok) {
-    throw new Error("Month API request failed");
-  }
-
-  const result = await response.json();
-
-  answer =
-    `${monthNames[monthNumber - 1]} generated ` +
-    `${formatCurrency(result.total_revenue)} in revenue and ` +
-    `${formatCurrency(result.total_profit)} in profit from ` +
-    `${result.total_orders.toLocaleString()} orders.`;
-
-  chart = {
-    type: "bar",
-    title: `${monthNames[monthNumber - 1]} Performance`,
-    subtitle: "Revenue and profit",
-    data: {
-      labels: ["Revenue", "Profit"],
-      values: [
-        Number(result.total_revenue),
-        Number(result.total_profit),
-      ],
-    },
-  };
-}
-
-// Cost & Profit query
-const costProfitMatch = normalized.match(
-  /\b(cost|costs|profit|profitability|margin|margins)\b/i
-);
-
-if (costProfitMatch) {
-  endpoint = "http://127.0.0.1:8000/summary/cost-profit";
-
-  const response = await fetch(endpoint);
-
-  if (!response.ok) {
-    throw new Error("Cost-profit API request failed");
-  }
-
-  const result = await response.json();
-
-  answer =
-    `Total cost is ${formatCurrency(result.total_cost)}, ` +
-    `while total profit is ${formatCurrency(result.total_profit)}. ` +
-    `The overall average margin is ${Number(result.avg_margin_percent).toFixed(2)}%.`;
-
-  chart = {
-    type: "bar",
-    title: "Cost & Profit Analysis",
-    subtitle: "Overall financial performance",
-    data: {
-      labels: ["Total Cost", "Total Profit"],
-      values: [
-        Number(result.total_cost),
-        Number(result.total_profit),
-      ],
-    },
-  };
-}
-        /* =================================================
-           SPECIFIC REGION QUERY
-           Examples:
-           How did Asia Pacific perform?
-           Show Europe performance
-        ================================================= */
-
-        else {
-          const regionMatch = normalized.match(
-            /\b(asia pacific|north america|europe|latin america|middle east and africa)\b/i
-          );
-
-          if (regionMatch) {
-            const region = regionMatch[1];
-
-            endpoint =
-              `http://127.0.0.1:8000/summary/region/${encodeURIComponent(
-                region
-              )}`;
-
-            const response = await fetch(endpoint);
-
-            if (!response.ok) {
-              throw new Error(
-                `Region API returned ${response.status}`
-              );
-            }
-
-            const result = await response.json();
-
-            answer =
-              `${result.region} generated ` +
-              `${formatCurrency(
-                result.total_revenue
-              )} in revenue and ` +
-              `${formatCurrency(
-                result.total_profit
-              )} in profit from ` +
-              `${Number(
-                result.total_orders
-              ).toLocaleString()} orders.`;
-
-            /* IMPORTANT:
-               Use chart object here.
-               Do NOT use chartData/chartTitle/chartSubtitle.
-            */
-
-            chart = {
-              type: "bar",
-              title: `${result.region} Performance`,
-              subtitle: "Revenue and profit",
-              data: {
-                labels: ["Revenue", "Profit"],
-                values: [
-                  Number(result.total_revenue),
-                  Number(result.total_profit),
-                ],
-              },
-            };
-          }
-
-          /* ===============================================
-             DEFAULT SUMMARY
-          =============================================== */
-
-          else {
-            const response = await fetch(endpoint);
-
-            if (!response.ok) {
-              throw new Error(
-                `Summary API returned ${response.status}`
-              );
-            }
-
-            const result = await response.json();
-
-            answer =
-              `MetricMind currently has ${Number(
-                result.total_orders
-              ).toLocaleString()} orders, ` +
-              `${formatCurrency(
-                result.total_revenue
-              )} total revenue, ` +
-              `${formatCurrency(
-                result.total_profit
-              )} total profit, and ` +
-              `${Number(
-                result.total_units_sold
-              ).toLocaleString()} units sold.`;
-
-            chart = {
-              type: "bar",
-              title: "Business Summary",
-              subtitle: "Overall MetricMind performance",
-              data: {
-                labels: [
-                  "Revenue",
-                  "Profit",
-                  "Units Sold",
-                ],
-                values: [
-                  Number(result.total_revenue),
-                  Number(result.total_profit),
-                  Number(result.total_units_sold),
-                ],
-              },
-            };
-          }
-        }
+        sql = `SELECT
+    COUNT(*) AS total_orders,
+    SUM(revenue) AS total_revenue,
+    SUM(profit) AS total_profit,
+    SUM(units_sold) AS total_units_sold
+FROM sales;`;
       }
 
       /* ===================================================
@@ -589,23 +755,38 @@ if (costProfitMatch) {
           endpoint,
           request: {},
         },
+        sql,
       };
 
       setMessages((previous) => [
         ...previous,
         assistantMessage,
       ]);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(
         "MetricMind API error:",
         error
       );
 
+      let errorMessageContent =
+        "I could not connect to the MetricMind API. Please make sure the FastAPI server is running on port 8000.";
+
+      if (error instanceof ApiError) {
+        console.error(`HTTP status: ${error.status}`);
+        if (error.detail) {
+          errorMessageContent = error.detail;
+        } else if (error.status === 404) {
+          errorMessageContent =
+            "The requested information could not be found in MetricMind records.";
+        } else {
+          errorMessageContent = `The MetricMind API responded with an error (HTTP ${error.status}).`;
+        }
+      }
+
       const errorMessage: Message = {
         id: Date.now() + 1,
         role: "assistant",
-        content:
-          "I could not connect to the MetricMind API. Please make sure the FastAPI server is running on port 8000.",
+        content: errorMessageContent,
       };
 
       setMessages((previous) => [
