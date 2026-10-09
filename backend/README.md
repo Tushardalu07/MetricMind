@@ -10,7 +10,7 @@ The backend will provide APIs for:
 - AI Agent integration
 - Frontend communication
 
-## FastAPI Endpoints
+## FastAPI Endpoints 
 
 The backend provides API endpoints for analyzing corporate sales data.
 
