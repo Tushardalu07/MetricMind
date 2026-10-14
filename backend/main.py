@@ -1,15 +1,41 @@
 
+from pathlib import Path
+
+import requests
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 import pandas as pd
+from ai_agentllm.schemas import SemanticQuery
+from ai_agentllm.tools import query_semantic_layer
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
+)
 
-data = pd.read_csv("data/MetricMind_Corporate_Sales_Dataset.csv")
+data = pd.read_csv(
+    Path(__file__).resolve().parent / "data" / "MetricMind_Corporate_Sales_Dataset.csv"
+)
 
 @app.get("/")
 def home():
     return {"message": "MetricMind API is running"}
+
+
+@app.post("/cube/query")
+def query_cube(query: SemanticQuery):
+    try:
+        return query_semantic_layer(query)
+    except requests.RequestException as error:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to query Cube",
+        ) from error
+
 
 @app.get("/sales")
 def get_sales():

@@ -33,10 +33,18 @@ type ChartInfo = {
   data: ChartData;
 };
 
+type CubeQuery = {
+  measures: string[];
+  dimensions: string[];
+  filters: Record<string, string | number>;
+};
+
+type CubeRow = Record<string, string | number | null>;
+
 type ApiInfo = {
   method: string;
   endpoint: string;
-  request: Record<string, string>;
+  request: CubeQuery | { question: string };
 };
 
 type Message = {
@@ -293,13 +301,143 @@ export default function Home() {
     return "/summary";
   };
 
+  const buildCubeQuery = (
+    question: string,
+    endpoint: string
+  ): CubeQuery => {
+    const normalizedQuestion = question.toLowerCase();
+    const query: CubeQuery = {
+      measures: [
+        "Sales.totalRevenue",
+        "Sales.totalProfit",
+        "Sales.totalOrders",
+        "Sales.totalUnitsSold",
+      ],
+      dimensions: [],
+      filters: {},
+    };
+
+    if (endpoint === "/summary/cost-profit") {
+      query.measures = [
+        "Sales.totalCost",
+        "Sales.totalProfit",
+        "Sales.averageMargin",
+      ];
+    } else if (endpoint.startsWith("/summary/region/")) {
+      query.filters["Sales.region"] = decodeURIComponent(
+        endpoint.replace("/summary/region/", "")
+      );
+    } else if (endpoint.startsWith("/summary/product/")) {
+      query.filters["Sales.product"] = decodeURIComponent(
+        endpoint.replace("/summary/product/", "")
+      );
+    } else if (endpoint.startsWith("/summary/channel/")) {
+      query.filters["Sales.channel"] = decodeURIComponent(
+        endpoint.replace("/summary/channel/", "")
+      );
+    } else if (endpoint.startsWith("/summary/quarter/")) {
+      query.filters["Sales.quarter"] = endpoint.replace(
+        "/summary/quarter/",
+        ""
+      );
+    } else if (endpoint.startsWith("/summary/year/")) {
+      query.filters["Sales.year"] = Number(
+        endpoint.replace("/summary/year/", "")
+      );
+    } else if (endpoint.startsWith("/summary/month/")) {
+      throw new Error(
+        "Cube currently supports year and quarter summaries, not month-level data."
+      );
+    }
+
+    if (query.filters["Sales.quarter"] === undefined) {
+      const quarterMatch = normalizedQuestion.match(/\bq([1-4])\b/);
+      if (quarterMatch) {
+        query.filters["Sales.quarter"] = `Q${quarterMatch[1]}`;
+      }
+    }
+
+    if (query.filters["Sales.year"] === undefined) {
+      const yearMatch = normalizedQuestion.match(/\b(20\d{2})\b/);
+      if (yearMatch) {
+        query.filters["Sales.year"] = Number(yearMatch[1]);
+      }
+    }
+
+    const groupedDimension = [
+      [/\bby region\b|\bregional (?:comparison|performance|sales)\b/, "Sales.region"],
+      [/\bby country\b/, "Sales.country"],
+      [/\bby product\b/, "Sales.product"],
+      [/\bby channel\b/, "Sales.channel"],
+      [/\bby quarter\b/, "Sales.quarter"],
+      [/\bby year\b/, "Sales.year"],
+    ].find(([pattern]) => (pattern as RegExp).test(normalizedQuestion));
+
+    if (groupedDimension) {
+      query.dimensions = [groupedDimension[1] as string];
+      if (normalizedQuestion.includes("profit")) {
+        query.measures = ["Sales.totalProfit"];
+      } else if (normalizedQuestion.includes("cost")) {
+        query.measures = ["Sales.totalCost"];
+      } else if (normalizedQuestion.includes("units")) {
+        query.measures = ["Sales.totalUnitsSold"];
+      } else if (normalizedQuestion.includes("orders")) {
+        query.measures = ["Sales.totalOrders"];
+      } else {
+        query.measures = ["Sales.totalRevenue"];
+      }
+    }
+
+    return query;
+  };
+
   /* =======================================================
      CREATE CHART
   ======================================================= */
 
+  const summarizeCubeRows = (rows: CubeRow[]): Record<string, number> => {
+    const row = rows[0] ?? {};
+
+    return {
+      total_revenue: Number(row["Sales.totalRevenue"] ?? 0),
+      total_profit: Number(row["Sales.totalProfit"] ?? 0),
+      total_orders: Number(row["Sales.totalOrders"] ?? 0),
+      total_units_sold: Number(row["Sales.totalUnitsSold"] ?? 0),
+      total_cost: Number(row["Sales.totalCost"] ?? 0),
+      average_margin_percent: Number(row["Sales.averageMargin"] ?? 0) * 100,
+    };
+  };
+
+  const createCubeChart = (
+    query: CubeQuery,
+    rows: CubeRow[]
+  ): ChartInfo | undefined => {
+    const dimension = query.dimensions[0];
+    const measure = query.measures[0];
+
+    if (!dimension || !measure || rows.length === 0) {
+      return undefined;
+    }
+
+    const dimensionTitle = dimension.replace("Sales.", "");
+    const measureTitle = measure
+      .replace("Sales.total", "")
+      .replace(/([a-z])([A-Z])/g, "$1 $2");
+
+    return {
+      type: "bar",
+      title: `${measureTitle} by ${dimensionTitle}`,
+      subtitle: `${rows.length} ${dimensionTitle.toLowerCase()} results`,
+      data: {
+        labels: rows.map((row) => String(row[dimension] ?? "Unknown")),
+        values: rows.map((row) => Number(row[measure] ?? 0)),
+      },
+    };
+  };
+
   const createChart = (
     endpoint: string,
-    data: any
+    data: Record<string, number>
   ): ChartInfo | undefined => {
     /* =====================================================
        COST & PROFIT
@@ -309,20 +447,11 @@ export default function Home() {
       return {
         type: "bar",
         title: "Cost & Profit Breakdown",
-        subtitle: "Financial breakdown from FastAPI",
+        subtitle: "Financial breakdown from Cube",
         data: {
-          labels: [
-            "Material Cost",
-            "Shipping Cost",
-            "Labor Cost",
-            "Marketing Cost",
-            "Profit",
-          ],
+          labels: ["Total Cost", "Profit"],
           values: [
-            Number(data?.total_material_cost ?? 0),
-            Number(data?.total_shipping_cost ?? 0),
-            Number(data?.total_labor_cost ?? 0),
-            Number(data?.total_marketing_cost ?? 0),
+            Number(data?.total_cost ?? 0),
             Number(data?.total_profit ?? 0),
           ],
         },
@@ -519,7 +648,7 @@ export default function Home() {
 
   const createAnswer = (
     endpoint: string,
-    data: any
+    data: Record<string, number>
   ): string => {
     if (endpoint === "/summary/cost-profit") {
       const totalCost = Number(
@@ -558,7 +687,7 @@ export default function Home() {
       data?.total_units_sold ?? 0
     );
 
-    let context = "business";
+    let context = "overall";
 
     if (endpoint.includes("/region/")) {
       context = "regional";
@@ -614,21 +743,18 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      /* Determine endpoint */
+      const intent = detectEndpoint(question);
+      const cubeQuery = buildCubeQuery(question, intent);
+      const endpoint = "/cube/query";
 
-      const endpoint = detectEndpoint(question);
-
-      /* Call FastAPI */
-
-      const response = await fetch(
-        `${API_BASE_URL}${endpoint}`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(cubeQuery),
+      });
 
       /* Handle errors */
 
@@ -652,7 +778,8 @@ export default function Home() {
 
       /* Read JSON */
 
-      const data = await response.json();
+      const rows = (await response.json()) as CubeRow[];
+      const data = summarizeCubeRows(rows);
 
       console.log(
         "MetricMind FastAPI response:",
@@ -661,26 +788,21 @@ export default function Home() {
 
       /* Answer */
 
-      const answer = createAnswer(
-        endpoint,
-        data
-      );
+      const answer = rows.length === 0
+        ? "No data matched that query."
+        : createAnswer(intent, data);
 
       /* Chart */
 
-      const chart = createChart(
-        endpoint,
-        data
-      );
+      const chart = createCubeChart(cubeQuery, rows) ??
+        createChart(intent, data);
 
       /* API information */
 
       const api: ApiInfo = {
-        method: "GET",
+        method: "POST",
         endpoint: `${API_BASE_URL}${endpoint}`,
-        request: {
-          question,
-        },
+        request: cubeQuery,
       };
 
       /* Assistant message */
@@ -722,8 +844,8 @@ export default function Home() {
           `${message}\n\n` +
           `Please make sure FastAPI is running on ${API_BASE_URL}.`,
         api: {
-          method: "GET",
-          endpoint: `${API_BASE_URL}/summary`,
+          method: "POST",
+          endpoint: `${API_BASE_URL}/cube/query`,
           request: {
             question,
           },

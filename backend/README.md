@@ -1,32 +1,47 @@
 # MetricMind FastAPI Backend
 
-This folder contains the FastAPI backend for the MetricMind project.
+FastAPI provides the browser-facing API and forwards semantic queries to Cube.
 
-The backend will provide APIs for:
+## Run locally
 
-- Query processing
-- Chat interaction
-- Cube.dev integration
-- AI Agent integration
-- Frontend communication
+From the repository root, start the API with:
 
-## FastAPI Endpoints 
+```powershell
+python -m uvicorn backend.main:app --reload
+```
 
-The backend provides API endpoints for analyzing corporate sales data.
+Run Cube separately from the `cube` folder with `npm run dev`. With both services
+running, send a `POST` request to `/cube/query` on the FastAPI server. For example:
 
-### Summary APIs
+```json
+{
+	"measures": ["Sales.totalRevenue"],
+	"dimensions": ["Sales.region"]
+}
+```
 
-- /summary - Returns overall sales summary
-- /summary/region/{region} - Returns sales summary by region
-- /summary/product/{product} - Returns sales summary by product
-- /summary/channel/{channel} - Returns sales summary by channel
-- /summary/year/{year} - Returns sales summary by year
-- /summary/month/{month} - Returns sales summary by month
-- /summary/quarter/{quarter} - Returns sales summary by quarter
-- /summary/cost-profit - Returns cost and profit analysis
+The Cube URL defaults to `http://localhost:4000/cubejs-api/v1/load`. Set
+`CUBE_API_URL` if Cube is hosted elsewhere.
 
-### API Documentation
+## Endpoints
 
-FastAPI provides interactive API documentation through Swagger UI:
+- `POST /cube/query` - forwards a Cube `measures`/`dimensions`/`filters` query
+- `GET /` - API liveness check
+- `GET /summary` and `GET /summary/...` - legacy CSV-backed summaries
 
-http://127.0.0.1:8000/docs
+The Cube URL defaults to `http://localhost:4000/cubejs-api/v1/load`. Set
+`CUBE_API_URL` in the FastAPI process environment to use another address. Local
+Next.js origins `localhost:3000` and `127.0.0.1:3000` are allowed by CORS.
+
+## Run locally
+
+From the repository root:
+
+```powershell
+python -m pip install fastapi uvicorn pandas requests
+python -m uvicorn backend.main:app --reload
+```
+
+Interactive API documentation:
+
+[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)

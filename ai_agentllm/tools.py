@@ -1,12 +1,16 @@
 
-import requests
+import os
 from calendar import monthrange
 from datetime import date, timedelta
+import requests
 
-from schemas import SemanticQuery
+from ai_agentllm.schemas import SemanticQuery
 
 
-CUBE_API_URL = "http://localhost:4000/cubejs-api/v1/load"
+CUBE_API_URL = os.getenv(
+    "CUBE_API_URL",
+    "http://localhost:4000/cubejs-api/v1/load",
+)
 
 
 def get_date_range(time_range):

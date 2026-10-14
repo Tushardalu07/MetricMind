@@ -1,80 +1,27 @@
 # MetricMind Frontend
 
-MetricMind is an AI-powered business analytics platform that allows users to ask business questions in natural language and view the results through an interactive chat interface.
+The Next.js chat interface sends supported sales questions to FastAPI, which
+forwards semantic queries to Cube. Results are shown as text and charts.
 
-This repository contains the **Next.js frontend** of the MetricMind project.
+## Run locally
 
-## Features
+From this directory:
 
-- 💬 Natural-language chat interface
-- 📊 Dynamic bar and line charts using ECharts
-- 🔍 View API Call
-- 🧾 View SQL query
-- ⏳ Loading and response states
-- 📱 Responsive UI for desktop and mobile
-- 🎨 Clean and professional analytics dashboard design
-
-## Tech Stack
-
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-- ECharts
-- echarts-for-react
-- Lucide React
-
-## Project Structure
-
-```text
-frontend/
-├── app/
-│   ├── components/
-│   │   └── charts/
-│   │       └── DynamicChart.tsx
-│   ├── globals.css
-│   ├── layout.tsx
-│   └── page.tsx
-├── public/
-├── package.json
-└── README.md
-
-Getting Started
-Clone the repository:
-git clone https://github.com/Tushardalu07/MetricMind.git
-
-Go to the frontend folder:
-cd MetricMind/frontend
-
-Install dependencies:
+```powershell
 npm install
-
-Run the development server:
 npm run dev
+```
 
-Open:
-http://localhost:3000
+Open [http://localhost:3000](http://localhost:3000). FastAPI must be running at
+`http://127.0.0.1:8000`, and Cube must be available to FastAPI at
+`http://localhost:4000`. Override the browser-facing API URL by setting
+`NEXT_PUBLIC_API_URL` before starting Next.js.
 
-Frontend Architecture
-User
-  ↓
-Next.js Frontend
-  ↓
-FastAPI Backend
-  ↓
-MetricMind Analytics
-  ↓
-Response + Chart
-  ↓
-Next.js UI
+## Chat query flow
 
-Current Status
-- [✔] Next.js UI
-- [✔] Chat interface
-- [✔] Responsive design
-- [✔] ECharts integration
-- [✔] Bar charts
-- [✔] Line charts
-- [✔] View API Call
-- [✔] View SQL
-- [ ] FastAPI integration
+The chat maps common sales prompts to Cube measures, dimensions, and filters,
+then sends them as JSON to `POST /cube/query`. The Cube request is available in
+the chat's API panel. The current data mart supports year and quarter grouping;
+month-level or order-date questions are not supported by the Cube model yet.
+
+The frontend uses Next.js, React, TypeScript, Tailwind CSS, ECharts, and Lucide.

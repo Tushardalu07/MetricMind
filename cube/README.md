@@ -32,6 +32,13 @@ It exposes `year`, `quarter`, `region`, `country`, `product`, and `channel` as d
 
 Cube reads its connection details from the `CUBEJS_DB_*` variables. Do not commit `.env` or real credentials.
 
-## Current boundary
+## Application integration
 
-Cube is a separate analytics API from the FastAPI service. The frontend is not yet connected to Cube. Natural-language question interpretation and the FastAPI-to-Cube integration still need to be implemented separately.
+The frontend sends supported chat questions to FastAPI as semantic queries.
+FastAPI calls Cube at `/cubejs-api/v1/load` and returns the result rows to the
+browser. FastAPI defaults to `http://localhost:4000`; set `CUBE_API_URL` in the
+FastAPI process environment to use another Cube host.
+
+The current mart is aggregated by year, quarter, region, country, product, and
+channel. It does not expose order-date or month-level dimensions, so those
+queries are not supported yet.
