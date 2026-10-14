@@ -12,9 +12,15 @@ from ai_agentllm.tools import query_semantic_layer
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["POST"],
-    allow_headers=["Content-Type"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost",
+        "http://127.0.0.1",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 data = pd.read_csv(
@@ -39,8 +45,7 @@ def query_cube(query: SemanticQuery):
 
 @app.get("/sales")
 def get_sales():
-    return
-data.to_dict(orient="records")
+    return data.to_dict(orient="records")
 
 @app.get("/summary")
 def get_summary():
