@@ -21,3 +21,6 @@ venv/
 
 # Logs
 *.log
+
+# Cube.js generated data
+cube/.cubestore/
