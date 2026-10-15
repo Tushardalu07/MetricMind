@@ -1,4 +1,3 @@
-
 import os
 from calendar import monthrange
 from datetime import date, timedelta
@@ -11,6 +10,7 @@ CUBE_API_URL = os.getenv(
     "CUBE_API_URL",
     "http://localhost:4000/cubejs-api/v1/load",
 )
+CUBE_API_TOKEN = os.getenv("CUBE_API_TOKEN")
 
 
 def get_date_range(time_range):
@@ -107,14 +107,17 @@ def query_semantic_layer(query: SemanticQuery):
 
     payload = {"query": cube_query}
 
+    headers = {}
+    if CUBE_API_TOKEN:
+        headers["Authorization"] = CUBE_API_TOKEN
+
     response = requests.post(
         CUBE_API_URL,
         json=payload,
-        timeout=30,
+        headers=headers,
+        timeout=60,
     )
 
     response.raise_for_status()
 
     result = response.json()
-
-    return result.get("data", [])
