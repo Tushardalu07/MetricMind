@@ -39,12 +39,9 @@ def query_cube(query: SemanticQuery):
     try:
         return query_semantic_layer(query)
     except requests.RequestException as error:
-        detail = str(error)
-        if getattr(error, "response", None) is not None:
-            detail += " | " + error.response.text[:300]
         raise HTTPException(
             status_code=502,
-            detail=f"Unable to query Cube: {detail}",
+            detail="Unable to query Cube",
         ) from error
 
 
