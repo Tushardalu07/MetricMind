@@ -121,3 +121,8 @@ def query_semantic_layer(query: SemanticQuery):
     response.raise_for_status()
 
     result = response.json()
+
+    if "error" in result:
+        raise ValueError(f"Cube error: {result['error']}")
+
+    return result.get("data") or []
