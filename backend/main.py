@@ -41,7 +41,7 @@ def query_cube(query: SemanticQuery):
     except requests.RequestException as error:
         raise HTTPException(
             status_code=502,
-            detail="Unable to query Cube",
+            detail=f"Unable to query Cube: {error}",
         ) from error
 
 
